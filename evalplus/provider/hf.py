@@ -16,21 +16,21 @@ class HuggingFace():
     def __init__(
         self,
         name: str,
-        dataset: str,
-        force_base_prompt: bool = False,
+        device: str,
+        dtype,
         attn_implementation: str = "eager",
         device_map: str = None,
         gguf_file: str = None,
+        trust_remote_code = False,
         **kwargs,
     ):
         self.device = torch.device(device)
 
         kwargs = {
             "device_map": device_map,
-            "trust_remote_code": self.trust_remote_code,
-            "torch_dtype": getattr(torch, self.dtype),
-            # "eager", "flash_attention_2", "sdpa"
-            "attn_implementation": attn_implementation,
+            "trust_remote_code": trust_remote_code,
+            "torch_dtype": getattr(torch, dtype),
+            "attn_implementation": attn_implementation, # "eager", "flash_attention_2", "sdpa"
             "gguf_file": gguf_file
         }
 
@@ -61,11 +61,9 @@ class HuggingFaceDecoder(DecoderBase):
     ):
         super().__init__(name=name, **kwargs)
 
-        device = "cpu"
+        device = "hpu"
 
         self.skip_special_tokens = True
-
-        print(f"{kwargs=}")
 
         self.force_base_prompt = force_base_prompt
 
@@ -85,12 +83,10 @@ class HuggingFaceDecoder(DecoderBase):
 
         print(f"{self.eos=}")
 
-        if device is "cuda":
-            self.backend = HuggingFace(name, device, kwargs)
-        elif device == "cuda":
-            self.backend = HuggingFace(name, device, kwargs)
+        if device == "cuda" or device == "cpu":
+            self.backend = HuggingFace(name, device, self.dtype, attn_implementation, device_map, gguf_file, self.trust_remote_code)
         elif device == "hpu":
-            self.backend = OptimumHabana(name, kwargs)
+            self.backend = OptimumHabana(name, device, self.dtype, attn_implementation, gguf_file, self.trust_remote_code)
 
     def is_direct_completion(self) -> bool:
         return self.force_base_prompt or self.tokenizer.chat_template is None

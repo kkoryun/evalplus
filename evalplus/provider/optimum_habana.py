@@ -1,21 +1,12 @@
-from hf import HuggingFaceDecoder
-
-
 import copy
-import time
-from typing import List
 import os
+from typing import List
+
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import habana_frameworks.torch.hpu as torch_hpu
-
-from evalplus.provider.base import DecoderBase
-from evalplus.provider.utility import (
-    extra_eos_for_direct_completion,
-    make_raw_chat_prompt,
-)
 
 import habana_frameworks.torch.core as htcore
 from optimum.habana.transformers.modeling_utils import adapt_transformers_to_gaudi
@@ -30,22 +21,26 @@ class OptimumHabana():
         self,
         name: str,
         device: str,
+        dtype,
+        attn_implementation,
         gguf_file: str = None,
-        **kwargs,
+        trust_remote_code: bool = False,
+        **kwargs
     ):
         self.device = torch.device(device)
         self.dtype = "bfloat16"
+        self.attn_implementation = attn_implementation
         self.attn_implementation = "flash_attention_2"
 
         self.lazy_mode = False
         self.hpu_graphs = False
-        self.torch_compile = True
+        self.torch_compile = False
 
         kwargs = {
             # "device_map": device_map,
-            "trust_remote_code": self.trust_remote_code,
-            "torch_dtype": getattr(torch, self.dtype),
-            # "attn_implementation": attn_implementation,  # "eager", "flash_attention_2", "sdpa"
+            "trust_remote_code": trust_remote_code,
+            "torch_dtype": getattr(torch, dtype),
+            "attn_implementation": attn_implementation,  # "eager", "flash_attention_2", "sdpa"
             "gguf_file": gguf_file
         }
         print(f"{type(self).__name__} {kwargs=}")
@@ -91,7 +86,7 @@ class OptimumHabana():
         torch_hpu.synchronize()
         return outputs
 
-    def _get_torch_compiled_model(model):
+    def _get_torch_compiled_model(self, model):
         # for gpt_bigcode, mpt, bloom, gpt2 model_type
         if hasattr(model, "transformer"):
             model.transformer = torch.compile(
